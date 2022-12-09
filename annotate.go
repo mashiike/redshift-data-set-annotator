@@ -19,9 +19,13 @@ type AnnotateOption struct {
 	DataSetID   string `help:"task ID" required:""`
 	DryRun      bool   `help:"if true, no update data set and display plan"`
 	ForceRename bool   `help:"The default is to keep any renaming that has already taken place. Enabling this option forces a name overwrite."`
+	Verbose     bool   `help:"Outputs the input information for the UpdateDataSet API"`
 }
 
 func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
+	if opt.DryRun {
+		log.Println("[info] ************* start dry run ****************")
+	}
 	describeDataSetOutput, err := app.client.DescribeDataSet(ctx, &quicksight.DescribeDataSetInput{
 		AwsAccountId: aws.String(app.AWSAccountID()),
 		DataSetId:    aws.String(opt.DataSetID),
@@ -331,13 +335,15 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 		log.Printf("[info] no changes, skip update data set %s", opt.DataSetID)
 		return nil
 	}
-	if opt.DryRun {
+	if opt.Verbose {
 		bs, err := json.MarshalIndent(updateDataSetInput, "", "  ")
 		if err != nil {
 			return err
 		}
-		log.Println("[info] ************* dry run ****************")
 		fmt.Fprintln(app.w, string(bs))
+	}
+	if opt.DryRun {
+		log.Println("[info] *************  end dry run  ****************")
 		return nil
 	}
 	output, err := app.client.UpdateDataSet(ctx, updateDataSetInput)
