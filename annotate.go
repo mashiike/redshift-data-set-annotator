@@ -16,10 +16,11 @@ import (
 )
 
 type AnnotateOption struct {
-	DataSetID   string `help:"task ID" required:""`
-	DryRun      bool   `help:"if true, no update data set and display plan"`
-	ForceRename bool   `help:"The default is to keep any renaming that has already taken place. Enabling this option forces a name overwrite."`
-	Verbose     bool   `help:"Outputs the input information for the UpdateDataSet API"`
+	DataSetID              string `help:"task ID" required:""`
+	DryRun                 bool   `help:"if true, no update data set and display plan"`
+	ForceRename            bool   `help:"The default is to keep any renaming that has already taken place. Enabling this option forces a name overwrite."`
+	ForceUpdateDescription bool   `help:"The default is to keep any renaming that has already taken place. Enabling this option forces a description overwrite."`
+	Verbose                bool   `help:"Outputs the input information for the UpdateDataSet API"`
 }
 
 func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
@@ -246,8 +247,16 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 							continue
 						}
 						exists = true
-						if tag.ColumnDescription.Text != nil && strings.TrimSpace(*tag.ColumnDescription.Text) != "" {
-							log.Printf("[debug] keep tag column operation `%s` in logical table `%s`", logicalColumnName, logicalTableID)
+						currentDescription := strings.TrimSpace(*tag.ColumnDescription.Text)
+						if tag.ColumnDescription.Text != nil && currentDescription != "" {
+							if currentDescription != *columnAnnotation.Description && opt.ForceUpdateDescription {
+								log.Printf("[debug] keep tag column operation `%s` in logical table `%s`", logicalColumnName, logicalTableID)
+								tagColumnOperation.Value.Tags[j].ColumnDescription.Text = aws.String(*columnAnnotation.Description)
+								log.Printf("[info] Update %s (`%s`) field description", logicalColumnName, physicalColumnName)
+								needUpdate = true
+							} else {
+								log.Printf("[debug] keep tag column operation `%s` in logical table `%s`", logicalColumnName, logicalTableID)
+							}
 						} else {
 							log.Printf("[debug] tag column operation `%s` is empty, update description in logical table `%s`", logicalColumnName, logicalTableID)
 							tagColumnOperation.Value.Tags[j].ColumnDescription.Text = aws.String(*columnAnnotation.Description)
