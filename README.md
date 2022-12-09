@@ -77,72 +77,13 @@ Flags:
       --force-update-description    The default is to keep any renaming that has already taken place. Enabling this option forces a description overwrite.
 ```
 
-## Configurations
+## Column Comment 
 
-Configuration file is HCL (HashiCorp Configuration Language) format. `redshift-data-set-annotator init` can generate a initial configuration file.
-
-The most small configuration file is as follows:
-```hcl
-redshift-data-set-annotator {
-    required_version = ">=v0.2.0"
-    sqs_queue_name   = "redshift-data-set-annotator"
-    service          = "prod"
-}
-
-rule "any_alert" {
-    alert {
-        any = true
-    }
-
-    information = <<EOF
-How do you respond to alerts?
-Describe information about your alert response here.
-(This area can use Go's template notation.)
-EOF
-}
+Basically, we expect comments of the following form.
 ```
-
-For more advanced configuration, please see [docs directory](docs/) 
-
-## Usage with AWS Lambda (serverless)
-
-redshift-data-set-annotator works with AWS Lambda and Amazon SQS.
-
-Lambda Function requires a webhook and a worker
-
-
-```mermaid
-sequenceDiagram
-  autonumber
-  Mackerel->>+http lambda function : POST /
-  http lambda function ->>+Amazon SQS: SendMessage
-  Amazon SQS-->- http lambda function: 200 Ok
-  http lambda function-->- Mackerel: 200 Ok
-  Amazon SQS ->>+ worker lambda function: trigger by AWS Lambda
-  worker lambda function ->>+ Data Source: query
-  Data Source -->- worker lambda function: query results
-  worker lambda function  ->>+ Mackerel: Create Graph Annotation
-  Mackerel-->- worker lambda function : 200 Ok
-  worker lambda function ->>-  Amazon SQS: Success Delete message
+<name>
+<description>
 ```
-
-
-Let's solidify the Lambda package with the following zip arcive (runtime `provided.al2`)
-
-```
-lambda.zip
-├── bootstrap    # build binary
-└── config.hcl   # configuration file
-```
-
-A related document is [https://docs.aws.amazon.com/lambda/latest/dg/runtimes-custom.html](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-custom.html)
-
-for example.
-
-deploy two lambda functions, redshift-data-set-annotator-http and redshift-data-set-annotator-worker in [lambda directory](lambda/)  
-The example of lambda directory uses [lambroll](https://github.com/fujiwara/lambroll) for deployment.
-
-For more information on the infrastructure around lambda functions, please refer to [example.tf](lambda/example.tf).
 
 ## LICENSE
 
