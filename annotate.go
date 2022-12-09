@@ -16,8 +16,9 @@ import (
 )
 
 type AnnotateOption struct {
-	DataSetID string `help:"task ID" required:""`
-	DryRun    bool   `help:"if true, no update data set and display plan"`
+	DataSetID   string `help:"task ID" required:""`
+	DryRun      bool   `help:"if true, no update data set and display plan"`
+	ForceRename bool   `help:"The default is to keep any renaming that has already taken place. Enabling this option forces a name overwrite."`
 }
 
 func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
@@ -103,10 +104,12 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 
 				// check rename
 				var logicalColumnName string
-				if renameColumnOperation, ok := renameColumnOperations[physicalColumnName]; !ok {
-					if columnAnnotation.Name != nil {
+				oldColumnName := physicalColumnName
+				if columnAnnotation.Name != nil {
+					renameColumnOperation, ok := renameColumnOperations[physicalColumnName]
+					if !ok {
 						logicalColumnName = *columnAnnotation.Name
-						renameColumnOperations[physicalColumnName] = &types.TransformOperationMemberRenameColumnOperation{
+						renameColumnOperation = &types.TransformOperationMemberRenameColumnOperation{
 							Value: types.RenameColumnOperation{
 								ColumnName:    aws.String(physicalColumnName),
 								NewColumnName: aws.String(logicalColumnName),
@@ -116,47 +119,57 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 						log.Printf("[info] rename field `%s` to `%s`", physicalColumnName, logicalColumnName)
 						needUpdate = true
 					} else {
-						logicalColumnName = physicalColumnName
+						if *renameColumnOperation.Value.NewColumnName != *columnAnnotation.Name && opt.ForceRename {
+							oldColumnName = *renameColumnOperation.Value.NewColumnName
+							logicalColumnName = *columnAnnotation.Name
+							renameColumnOperation.Value.NewColumnName = aws.String(logicalColumnName)
+							log.Printf("[debug] rewrite rename column operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+							log.Printf("[info] rename field for `%s`: rewrite `%s` to `%s`", physicalColumnName, oldColumnName, logicalColumnName)
+							needUpdate = true
+						} else {
+							logicalColumnName = *renameColumnOperation.Value.NewColumnName
+							log.Printf("[debug] keep rename column operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+						}
 					}
+					renameColumnOperations[physicalColumnName] = renameColumnOperation
 				} else {
-					logicalColumnName = *renameColumnOperation.Value.NewColumnName
-					log.Printf("[debug] keep rename column operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+					logicalColumnName = physicalColumnName
 				}
 
 				// Check the impact of rename
-				if logicalColumnName != physicalColumnName {
+				if oldColumnName != logicalColumnName {
 					//check cast operation
-					if op, ok := castColumnOperations[physicalColumnName]; ok {
+					if op, ok := castColumnOperations[oldColumnName]; ok {
 						op.Value.ColumnName = aws.String(logicalColumnName)
 						castColumnOperations[logicalColumnName] = op
-						delete(castColumnOperations, physicalColumnName)
-						log.Printf("[debug] swap cast operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+						delete(castColumnOperations, oldColumnName)
+						log.Printf("[debug] swap cast operation `%s` to `%s` in logical table `%s`", oldColumnName, logicalColumnName, logicalTableID)
 						needUpdate = true
 					}
 
 					//check tag operation
-					if op, ok := tagColumnOperations[physicalColumnName]; ok {
+					if op, ok := tagColumnOperations[oldColumnName]; ok {
 						op.Value.ColumnName = aws.String(logicalColumnName)
 						tagColumnOperations[logicalColumnName] = op
-						delete(tagColumnOperations, physicalColumnName)
-						log.Printf("[debug] swap tag operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+						delete(tagColumnOperations, oldColumnName)
+						log.Printf("[debug] swap tag operation `%s` to `%s` in logical table `%s`", oldColumnName, logicalColumnName, logicalTableID)
 						needUpdate = true
 					}
 
 					//check untag operation
-					if op, ok := untagColumnOperations[physicalColumnName]; ok {
+					if op, ok := untagColumnOperations[oldColumnName]; ok {
 						op.Value.ColumnName = aws.String(logicalColumnName)
 						untagColumnOperations[logicalColumnName] = op
-						delete(tagColumnOperations, physicalColumnName)
-						log.Printf("[debug] swap untag operation `%s` to `%s` in logical table `%s`", physicalColumnName, logicalColumnName, logicalTableID)
+						delete(tagColumnOperations, oldColumnName)
+						log.Printf("[debug] swap untag operation `%s` to `%s` in logical table `%s`", oldColumnName, logicalColumnName, logicalTableID)
 						needUpdate = true
 					}
 
 					//check create column operation
 					for i, op := range createColumnOperations {
 						for j, column := range op.Value.Columns {
-							if strings.Contains(*column.Expression, physicalColumnName) {
-								column.Expression = aws.String(strings.ReplaceAll(*column.Expression, physicalColumnName, logicalColumnName))
+							if strings.Contains(*column.Expression, oldColumnName) {
+								column.Expression = aws.String(strings.ReplaceAll(*column.Expression, oldColumnName, logicalColumnName))
 								log.Printf("[debug] rewrite create column operation `%s` expression=`%s` in logical table `%s`", *column.ColumnName, *column.Expression, logicalTableID)
 								needUpdate = true
 							}
@@ -167,8 +180,8 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 
 					//check filter column operation
 					for i, op := range filterColumnOperations {
-						if strings.Contains(*op.Value.ConditionExpression, physicalColumnName) {
-							op.Value.ConditionExpression = aws.String(strings.ReplaceAll(*op.Value.ConditionExpression, physicalColumnName, logicalColumnName))
+						if strings.Contains(*op.Value.ConditionExpression, oldColumnName) {
+							op.Value.ConditionExpression = aws.String(strings.ReplaceAll(*op.Value.ConditionExpression, oldColumnName, logicalColumnName))
 							log.Printf("[debug] rewrite filter column operation expression=`%s` in logical table `%s`", *op.Value.ConditionExpression, logicalTableID)
 							needUpdate = true
 						}
@@ -178,9 +191,9 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 					//check project operation
 					for i, op := range projectOperations {
 						for j, column := range op.Value.ProjectedColumns {
-							if column == physicalColumnName {
+							if column == oldColumnName {
 								op.Value.ProjectedColumns[j] = logicalColumnName
-								log.Printf("[debug] switch projected columns[%d] `%s` to `%s` in logical table `%s`", i, physicalColumnName, logicalColumnName, logicalTableID)
+								log.Printf("[debug] switch projected columns[%d] `%s` to `%s` in logical table `%s`", i, oldColumnName, logicalColumnName, logicalTableID)
 								needUpdate = true
 							}
 						}
@@ -190,9 +203,9 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 					//check ColumnLevelPermissionRules
 					for i, rule := range updateDataSetInput.ColumnLevelPermissionRules {
 						for j, columnName := range rule.ColumnNames {
-							if columnName == physicalColumnName {
+							if columnName == oldColumnName {
 								rule.ColumnNames[j] = logicalColumnName
-								log.Printf("[debug] change ColumnLevelPermissionRules columns[%d] `%s` to `%s`", j, physicalColumnName, logicalColumnName)
+								log.Printf("[debug] change ColumnLevelPermissionRules columns[%d] `%s` to `%s`", j, oldColumnName, logicalColumnName)
 							}
 						}
 						updateDataSetInput.ColumnLevelPermissionRules[i] = rule
