@@ -350,6 +350,6 @@ func (app *App) RunAnnotate(ctx context.Context, opt *AnnotateOption) error {
 	if err != nil {
 		return fmt.Errorf("UpdateDataSet:%w", err)
 	}
-	log.Printf("[info] updated data set %s ingestion=%s", opt.DataSetID, *output.IngestionId)
+	log.Printf("[info] updated data set %s ingestion=`%s`", opt.DataSetID, coalesce(output.IngestionId))
 	return nil
 }
