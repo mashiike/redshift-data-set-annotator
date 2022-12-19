@@ -13,7 +13,7 @@ require (
 	github.com/fujiwara/logutils v1.1.0
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/mashiike/redshift-data-sql-driver v0.1.0
-	github.com/samber/lo v1.36.0
+	github.com/samber/lo v1.37.0
 )
 
 require (
