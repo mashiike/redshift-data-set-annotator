@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/Songmu/prompter v0.5.1
 	github.com/alecthomas/kong v0.7.1
-	github.com/aws/aws-sdk-go-v2 v1.17.2
+	github.com/aws/aws-sdk-go-v2 v1.17.3
 	github.com/aws/aws-sdk-go-v2/config v1.18.4
 	github.com/aws/aws-sdk-go-v2/service/quicksight v1.28.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.17.6
